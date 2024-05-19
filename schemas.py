@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 class Item(BaseModel):
-    name: str
+    nombre: str
     apellido: str
     correo: str
     password: str
