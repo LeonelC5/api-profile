@@ -1,66 +1,65 @@
-from fastapi import FastAPI
-import mysql.connector
-import schemas
-import os
+from flask import Flask, jsonify, request, abort, jsonify, url_for, redirect
+from flask_cors import CORS
+from uuid import uuid4
 
-app = FastAPI()
+app = Flask(__name__)
+app.secret_key = "my_secret_key"
 
-host_name = os.environ.get("database-proyecto.c45ddxrq8nnm.us-east-1.rds.amazonaws.com")
-port_number = os.environ.get("3306")
-user_name = os.environ.get("admin")
-password_db = os.environ.get("database-proyecto")
-database_name = os.environ.get("db_profile")
+CORS(app, resources={r"/": {"origins": ""}}, supports_credentials=True)
 
-# Get all profiles
-@app.get("/profile")
+# In-memory storage for profiles
+profiles = {}
+last_id = max(profiles.keys()) if profiles else 0
+
+@app.route("/profile", methods=["GET"])
 def get_profiles():
-    mydb = mysql.connector.connect(host=host_name, port=port_number, user=user_name, password=password_db, database=database_name)  
-    cursor = mydb.cursor()
-    cursor.execute("SELECT * FROM user")
-    result = cursor.fetchall()
-    mydb.close()
-    return {"users": result}
+    return jsonify(list(profiles.values()))
 
-# Get a profile by ID
-@app.get("/profile/{id}")
-def get_profile(id: int):
-    mydb = mysql.connector.connect(host=host_name, port=port_number, user=user_name, password=password_db, database=database_name)  
-    cursor = mydb.cursor()
-    cursor.execute(f"SELECT * FROM user WHERE id = {id}")
-    result = cursor.fetchone()
-    mydb.close()
-    return {"user": result}
+@app.route("/profile/<int:id>", methods=["GET"])
+def get_profile(id):
+    if id in profiles:
+        return jsonify(profiles[id])
+    else:
+        return jsonify({"error": "Perfil no encontrado"}), 404
+    
+@app.route("/profile", methods=["POST"])
+def create_profile():
+    global last_id
+    data = request.json
+    if "name" in data and "last_name" in data and "age" in data:
+        last_id += 1
+        new_profile = {
+            "id": last_id,
+            "name": data["name"],
+            "last_name": data["last_name"],
+            "age": data["age"]
+        }
+        profiles[last_id] = new_profile
+        return jsonify({"message": "Perfil creado exitosamente", "profile": new_profile}), 201
+    else:
+        return jsonify({"error": "Faltan datos en la solicitud"}), 400
 
-# Add a new profile
-@app.post("/profile")
-def add_profile(item:schemas.Item):
-    mydb = mysql.connector.connect(host=host_name, port=port_number, user=user_name, password=password_db, database=database_name)  
-    cursor = mydb.cursor()
-    sql = "INSERT INTO user (nombre, apellido, correo, password, celular, description, imagen) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-    val = (item.nombre, item.apellido, item.correo, item.password, item.celular, item.description, item.imagen)
-    cursor.execute(sql, val)
-    mydb.commit()
-    mydb.close()
-    return {"message": "user added successfully"}
+@app.route("/profile/<int:id>", methods=["PUT"])
+def update_profile(id):
+    if id in profiles:
+        data = request.json
+        if "name" in data:
+            profiles[id]["name"] = data["name"]
+        if "last_name" in data:
+            profiles[id]["last_name"] = data["last_name"]
+        if "age" in data:
+            profiles[id]["age"] = data["age"]
+        return jsonify({"message": "Perfil actualizado exitosamente", "profile": profiles[id]}), 200
+    else:
+        return jsonify({"error": "Perfil no encontrado"}), 404
 
-# Modify a profile
-@app.put("/profile/{id}")
-def update_profile(id:int, item:schemas.Item):
-    mydb = mysql.connector.connect(host=host_name, port=port_number, user=user_name, password=password_db, database=database_name)  
-    cursor = mydb.cursor()
-    sql = "UPDATE user set nombre=%s, apellido=%s,correo=%s, password=%s, celular=%s, description=%s, imagen=%s  where id=%s"
-    val = (item.nombre, item.apellido, item.correo, item.password, item.celular, item.description, item.imagen, id)
-    cursor.execute(sql, val)
-    mydb.commit()
-    mydb.close()
-    return {"message": "user modified successfully"}
-
-# Delete a profile by ID
-@app.delete("/profile/{id}")
-def delete_profile(id: int):
-    mydb = mysql.connector.connect(host=host_name, port=port_number, user=user_name, password=password_db, database=database_name)  
-    cursor = mydb.cursor()
-    cursor.execute(f"DELETE FROM user WHERE id = {id}")
-    mydb.commit()
-    mydb.close()
-    return {"message": "profile deleted successfully"}
+@app.route("/profile/<int:id>", methods=["DELETE"])
+def delete_profile(id):
+    if id in profiles:
+        del profiles[id]
+        return jsonify({"message": "Perfil eliminado exitosamente"}), 200
+    else:
+        return jsonify({"error": "Perfil no encontrado"}), 404
+    
+if __name__ == '__main__':
+    app.run(port=5500, debug=True)
